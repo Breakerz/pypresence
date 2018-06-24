@@ -1,0 +1,14 @@
+mqtt_host: 192.168.0.123
+mqtt_port: 1883
+mqtt_user: usermqtt
+mqtt_pwd: 123
+
+room: kitchen
+macs:
+  - name: nuttag
+    mac: 'EF:7F:DF:AF:ED:1F'
+    is_ble : 1
+
+  - name : iphone
+    mac: '40:9F:AF:79:9F:D2'
+    is_ble : 2

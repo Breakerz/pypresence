@@ -130,9 +130,9 @@ def search_bt(mac):
     if("invalid" in beacons_raw):
         return False
     if("hcitool" in beacons_raw):
-        return False		
-	if not beacons_raw:
-		return False
+        return False
+    if(not beacons_raw):
+        return False
     return True    
 
 

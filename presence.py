@@ -114,14 +114,15 @@ def scan_bt(mac):
         beacons_raw = subprocess.check_output(['sudo', 'timeout', '--signal','9','7', 'hcitool','-i','hci0','name', mac])
     except subprocess.CalledProcessError as e:
         if (e.returncode == -9):
-            return str(beacons_raw)
+            return str(beacons_raw,'utf-8')
         return 'error'   
-    return str(beacons_raw)
+    return str(beacons_raw,'utf-8')
 
 def search_bt(mac):
+    print("search_bt({0})".format(mac))
     beacons_raw = scan_bt(mac)
     print("result scan_bt {0}".format(beacons_raw))
-    if("error" in beacons_raw):
+    if("error" in beacons_raw):        
         return False
     if("not available" in beacons_raw):
         return False
@@ -131,9 +132,12 @@ def search_bt(mac):
         return False
     if("hcitool" in beacons_raw):
         return False
-    if(not beacons_raw):
+    if(beacons_raw.strip() == b''):
         return False
-    return True    
+    if(not (beacons_raw and beacons_raw.strip())):
+        return False
+    print("bt found {0}".format(beacons_raw))
+    return True
 
 
 def json_default(value):
@@ -177,10 +181,11 @@ client.connect(conf["mqtt_host"], conf["mqtt_port"], 60)
 
 while (True) :
     for key in watched:
-        print("looping")
-        print(watched[key])
+        print("Searching for {0} with mac {1}".format(watched[key].name, watched[key].mac))
+        
         found = False
         if (watched[key].is_ble != 2):
+            print("BLE Scan")
             if (search_ble(watched[key].mac)):
                 watched[key].is_ble = 1
                 watched[key].confidence = 100
@@ -188,6 +193,7 @@ while (True) :
                 found = True
 
         if (watched[key].is_ble != 1):
+            print("BT Scan")
             if (search_bt(watched[key].mac)):
                 watched[key].is_ble = 2
                 watched[key].confidence = 100
@@ -195,6 +201,7 @@ while (True) :
                 found = True
         
         if (found == False):
+            print("Not found")
             watched[key].decrease_confidence()
         
         post_mqtt(client, watched[key])

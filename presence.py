@@ -117,7 +117,6 @@ def scan_bt(mac):
             return str(beacons_raw)
         return 'error'   
     return str(beacons_raw)
-    ##todo
 
 def search_bt(mac):
     beacons_raw = scan_bt(mac)
@@ -131,9 +130,10 @@ def search_bt(mac):
     if("invalid" in beacons_raw):
         return False
     if("hcitool" in beacons_raw):
-        return False
+        return False		
+	if not beacons_raw:
+		return False
     return True    
-    ##todo
 
 
 def json_default(value):

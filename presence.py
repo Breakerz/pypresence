@@ -49,16 +49,19 @@ class Tracker:
 
 
 def on_connect(mqttc, userdata, flag, rc):
+    """Implement callback on mqtt connect."""
     print("Connected with result code "+str(rc))
     if rc != 0:
         mqttc.reconnect()
 
 
 def on_publish(mqttc, userdata, mid):
+    """Implement callback for mqtt publish."""
     print("Published")
 
 
 def on_disconnect(mqttc, userdata, rc):
+    """Implement callback for mqtt disconnect."""
     if rc != 0:
         print("Unexpected disconnection. Reconnecting...")
         mqttc.reconnect()
@@ -67,13 +70,13 @@ def on_disconnect(mqttc, userdata, rc):
 
 
 def scan_ble():
-    """."""
+    """Execute bluetooth low energy scan."""
     beacons_raw = ''
     try:
         subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
-        time.sleep(1)
+        # time.sleep(1)
         subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
-        time.sleep(1)
+        # time.sleep(1)
         beacons_raw = subprocess.check_output(
             ['sudo', 'timeout', '--signal', '9', '7',
              'hcitool', 'lescan', '--duplicate'])
@@ -92,7 +95,7 @@ def scan_ble():
 
 
 def search_ble(mac):
-    """."""
+    """Search for bluetooth low energy mac address."""
     raw = scan_ble()
     p = re.compile(r"(?:[0-9a-fA-F]:?){12}")
     macs = OrderedDict((x, True) for x in re.findall(p, raw)).keys()
@@ -101,13 +104,13 @@ def search_ble(mac):
 
 
 def scan_bt(mac):
-    """."""
+    """Execute bluetooth scan."""
     beacons_raw = ''
     try:
         subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
-        time.sleep(1)
+        # time.sleep(1)
         subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
-        time.sleep(1)
+        # time.sleep(1)
         beacons_raw = subprocess.check_output(
             ['sudo', 'timeout', '--signal', '9', '7',
              'hcitool', '-i', 'hci0', 'name', mac])
@@ -119,30 +122,25 @@ def scan_bt(mac):
 
 
 def search_bt(mac):
-    """."""
+    """Search for bluetooth mac address."""
     print("search_bt({0})".format(mac))
     beacons_raw = scan_bt(mac)
     print("result scan_bt {0}".format(beacons_raw))
-    if "error" in beacons_raw:
+    if (("error" in beacons_raw)
+            or ("not available" in beacons_raw)
+            or ("timeout" in beacons_raw)
+            or ("invalid" in beacons_raw)
+            or ("hcitool" in beacons_raw)):
         return False
-    elif "not available" in beacons_raw:
-        return False
-    elif "timeout" in beacons_raw:
-        return False
-    elif "invalid" in beacons_raw:
-        return False
-    elif "hcitool" in beacons_raw:
-        return False
-    elif beacons_raw.strip() == b'':
-        return False
-    elif not (beacons_raw and beacons_raw.strip()):
+    elif ((beacons_raw.strip() == b'')
+          or not (beacons_raw and beacons_raw.strip())):
         return False
     print("bt found {0}".format(beacons_raw))
     return True
 
 
 def json_default(value):
-    """."""
+    """Return json timestamp format."""
     if isinstance(value, datetime.date):
         return str(value.strftime("%Y-%m-%d %H:%M:%S"))
         # return dict(year=value.year, month=value.month, day=value.day)
@@ -150,7 +148,7 @@ def json_default(value):
 
 
 def post_mqtt(client, current):
-    """."""
+    """Post mqtt message."""
     print("post_mqtt")
     global room
     client.publish("location/owner/{0}/{1}".format(room, current.mac),
@@ -160,7 +158,7 @@ def post_mqtt(client, current):
 
 
 def init_watch():
-    """."""
+    """Populate watched mac address list."""
     global watched
     global conf
     watched = {}  # reset dictionnary

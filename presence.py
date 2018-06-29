@@ -153,10 +153,7 @@ def post_mqtt(client, current):
     """."""
     print("post_mqtt")
     global room
-    print("location/owner/{0}/{1}".format(room, current.name),
-          json.dumps(current, ensure_ascii=False,
-                     default=json_default).encode('utf-8'))
-    client.publish("location/owner/{0}/{1}".format(room, current.name),
+    client.publish("location/owner/{0}/{1}".format(room, current.mac),
                    json.dumps(current, ensure_ascii=False,
                               default=json_default).encode('utf-8'))
     # str(json.dumps(current, default=lambda o: o.__dict__)), encoding='ascii')

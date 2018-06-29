@@ -7,8 +7,8 @@ room: kitchen
 macs:
   - name: nuttag
     mac: 'EF:7F:DF:AF:ED:1F'
-    is_ble : 1
+    bt_type : ble
 
   - name : iphone
     mac: '40:9F:AF:79:9F:D2'
-    is_ble : 2
+    bt_type : bt

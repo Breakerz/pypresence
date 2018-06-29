@@ -1,171 +1,185 @@
 # -*- coding: utf-8 -*-
-import paho.mqtt.client as mqtt
+"""Presence detection made in python."""
 import subprocess
-import json
-import yaml
 import time
 import re
 import datetime
+import json
 from collections import OrderedDict
+import paho.mqtt.client as mqtt
+import yaml
 
 watched = {}
 
+
 class Watchedmac:
+    """Watched bl/ble macs."""
 
-    # def __init__(self, mac):
-    #     """Constructeur de notre classe"""
-    #     self.mac = mac
-    #     self.lastseen = datetime.min
-    #     self.confidence = 0
-    #     self.is_ble = 0
-
-    # def __init__(self, mac, is_ble):
-    #     """Constructeur de notre classe"""
-    #     self.mac = mac
-    #     self.lastseen = datetime.min
-    #     self.confidence = 0
-    #    self.is_ble = is_ble
-
-    def __init__(self, name, mac, lastseen, confidence, is_ble):
-        """Constructeur de notre classe"""
+    def __init__(self, name, mac, lastseen, confidence, bt_type):
+        """Constructeur de notre classe."""
         self.name = name
         self.mac = mac
         self.lastseen = lastseen
         self.confidence = confidence
-        self.is_ble = is_ble
-    
+        self.bt_type = bt_type
+
     def decrease_confidence(self):
-        if(self.confidence != 0):
+        """."""
+        if self.confidence != 0:
             self.confidence = self.confidence - 5
 
 
-#https://gist.github.com/ghostbitmeta/694934062c0814680d52
+class Tracker:
+    """Bluetooth tracker."""
+
+    def __init__(self):
+        """Initialize BLE tracker."""
+
+# https://gist.github.com/ghostbitmeta/694934062c0814680d52
 
 # The callback for when the client receives a CONNACK response from the server.
-def on_connect(client, userdata, flag, rc):
-	print("Connected with result code %s" % (str(rc)))
-    # Subscribing in on_connect() means that if we lose the connection and
-    # reconnect then subscriptions will be renewed.
-	client.subscribe("presence/#")
 
 
-def on_message(client, userdata, msg):
-    print("Topic: ", msg.topic+'\nMessage: '+str(msg.payload, encoding='ascii'))
-    {
-        "presence/get/exemple1": get_exemple1,
-        "presence/set/exemple2": set_exemple2,		
-    }.get(str(msg.topic), wrong_topic)(client, msg)
+# def on_connect(client, userdata, flag, rc):
+#     """."""
+#     print("Connected with result code %s" % (str(rc)))
+#     # Subscribing in on_connect() means that if we lose the connection and
+#     # reconnect then subscriptions will be renewed.
+#     client.subscribe("presence/#")
 
 
-def get_exemple1(client, msg):
-	print("get_exemple1")
-	client.publish("presence/roomx/34234234", str(msg.payload, encoding='ascii'))	
+def on_connect(mqttc, userdata, flag, rc):
+    print("Connected with result code "+str(rc))
+    if rc != 0:
+        mqttc.reconnect()
 
 
-
-def set_exemple2(client, msg):
-	print("set_exemple2")
-	client.publish("presence/roomx/34234234", str(msg.payload, encoding='ascii'))	
+def on_publish(mqttc, userdata, mid):
+    print("Published")
 
 
-def wrong_topic(client, msg):
-	print(str(msg.topic))
+def on_disconnect(mqttc, userdata, rc):
+    if rc != 0:
+        print("Unexpected disconnection. Reconnecting...")
+        mqttc.reconnect()
+    else:
+        print("Disconnected successfully")
 
 
 def scan_ble():
+    """."""
     beacons_raw = ''
     try:
-        subprocess.call(['sudo','hciconfig','hci0','down'])
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
         time.sleep(1)
-        subprocess.call(['sudo','hciconfig','hci0','up'])
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
         time.sleep(1)
-        beacons_raw = subprocess.check_output(['sudo', 'timeout', '--signal','9','7', 'hcitool','lescan','--duplicate'])
+        beacons_raw = subprocess.check_output(
+            ['sudo', 'timeout', '--signal', '9', '7',
+             'hcitool', 'lescan', '--duplicate'])
+
     except subprocess.CalledProcessError as e:
-        if (e.returncode == -9):
-            return str(e.output)                                                                                                  
+        if e.returncode == -9:
+            return str(e.output)
         return ("error code", e.returncode, e.output)
+
     return str(beacons_raw)
     # https://stackoverflow.com/questions/6341451/piping-together-several-subprocesses''
 
-    #sudo timeout --signal SIGINT $beacon_scan_interval hcitool lescan --duplicates 2>&1
+    # sudo timeout --signal SIGINT $beacon_scan_interval hcitool lescan --duplicates 2>&1
 
+    # local result=$(timeout --signal SIGINT $name_scan_timeout hcitool -i hci0 name "$1" 2>&1 | grep -v 'not available' | grep -vE "hcitool|timeout|invalid|error" )
 
-    #local result=$(timeout --signal SIGINT $name_scan_timeout hcitool -i hci0 name "$1" 2>&1 | grep -v 'not available' | grep -vE "hcitool|timeout|invalid|error" )
-
-def get_scan_ble():
-    raw = scan_ble()
-    p = re.compile(r"(?:[0-9a-fA-F]:?){12}")
-    cleanup = OrderedDict((x, True) for x in re.findall(p, raw)).keys()
-    for a in cleanup:
-        print(a)
-    return cleanup
 
 def search_ble(mac):
-    scan_result = get_scan_ble()
-    return ( mac in scan_result)
+    """."""
+    raw = scan_ble()
+    p = re.compile(r"(?:[0-9a-fA-F]:?){12}")
+    macs = OrderedDict((x, True) for x in re.findall(p, raw)).keys()
+    print(mac in macs, macs)
+    return mac in macs
+
 
 def scan_bt(mac):
+    """."""
     beacons_raw = ''
     try:
-        subprocess.call(['sudo','hciconfig','hci0','down'])
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
         time.sleep(1)
-        subprocess.call(['sudo','hciconfig','hci0','up'])
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
         time.sleep(1)
-        beacons_raw = subprocess.check_output(['sudo', 'timeout', '--signal','9','7', 'hcitool','-i','hci0','name', mac])
+        beacons_raw = subprocess.check_output(
+            ['sudo', 'timeout', '--signal', '9', '7',
+             'hcitool', '-i', 'hci0', 'name', mac])
     except subprocess.CalledProcessError as e:
-        if (e.returncode == -9):
-            return str(beacons_raw,'utf-8')
-        return 'error'   
-    return str(beacons_raw,'utf-8')
+        if e.returncode == -9:
+            return str(beacons_raw, 'utf-8')
+        return 'error'
+    return str(beacons_raw, 'utf-8')
+
 
 def search_bt(mac):
+    """."""
     print("search_bt({0})".format(mac))
     beacons_raw = scan_bt(mac)
     print("result scan_bt {0}".format(beacons_raw))
-    if("error" in beacons_raw):        
+    if "error" in beacons_raw:
         return False
-    if("not available" in beacons_raw):
+    elif "not available" in beacons_raw:
         return False
-    if("timeout" in beacons_raw):
+    elif "timeout" in beacons_raw:
         return False
-    if("invalid" in beacons_raw):
+    elif "invalid" in beacons_raw:
         return False
-    if("hcitool" in beacons_raw):
+    elif "hcitool" in beacons_raw:
         return False
-    if(beacons_raw.strip() == b''):
+    elif beacons_raw.strip() == b'':
         return False
-    if(not (beacons_raw and beacons_raw.strip())):
+    elif not (beacons_raw and beacons_raw.strip()):
         return False
     print("bt found {0}".format(beacons_raw))
     return True
 
 
 def json_default(value):
-    if isinstance(value, datetime.date ):
+    """."""
+    if isinstance(value, datetime.date):
         return str(value.strftime("%Y-%m-%d %H:%M:%S"))
-        #return dict(year=value.year, month=value.month, day=value.day)
-    else:
-        return value.__dict__
+        # return dict(year=value.year, month=value.month, day=value.day)
+    return value.__dict__
+
 
 def post_mqtt(client, current):
+    """."""
     print("post_mqtt")
     global room
-    client.publish("presence/{0}/{1}".format(room, current.name ) , json.dumps(current, ensure_ascii=False, default=json_default).encode('utf-8'))  #str(json.dumps(current, default=lambda o: o.__dict__)), encoding='ascii')	
+    print("location/owner/{0}/{1}".format(room, current.name),
+          json.dumps(current, ensure_ascii=False,
+                     default=json_default).encode('utf-8'))
+    client.publish("location/owner/{0}/{1}".format(room, current.name),
+                   json.dumps(current, ensure_ascii=False,
+                              default=json_default).encode('utf-8'))
+    # str(json.dumps(current, default=lambda o: o.__dict__)), encoding='ascii')
+
 
 def init_watch():
+    """."""
     global watched
     global conf
-    watched = {} #reset dictionnary
-   # watched['EF:7C:D4:AE:ED:1F'] =  Watchedmac('EF:7C:D4:AE:ED:1F', 0, 0 ,0)
+    watched = {}  # reset dictionnary
+    # watched['EF:7C:D4:AE:ED:1F'] =  Watchedmac('EF:7C:D4:AE:ED:1F', 0, 0 ,0)
     print(conf)
     for mac in conf["macs"]:
         print(mac)
-        watched[mac["name"]] =  Watchedmac(name=mac["name"], mac= mac["mac"], is_ble = mac["is_ble"], confidence = 0, lastseen = "")# datetime.date.min)
+        watched[mac["name"]] = Watchedmac(name=mac["name"], mac=mac["mac"],
+                                          bt_type=mac["bt_type"], confidence=0,
+                                          lastseen="")  # datetime.date.min)
+
 
 conf = yaml.load(open('./presence.yaml'))
 
 room = conf["room"]
-if(room is None) :
+if room is None:
     room = "default"
 
 init_watch()
@@ -173,37 +187,41 @@ for a in watched:
     print(watched[a].mac)
 
 
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.on_publish = on_publish
+mqtt_client.on_disconnect = on_disconnect
+mqtt_client.username_pw_set(conf["mqtt_user"], conf["mqtt_pwd"])
+mqtt_client.connect(conf["mqtt_host"], conf["mqtt_port"], 60)
+mqtt_client.loop_start()
 
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
-client.connect(conf["mqtt_host"], conf["mqtt_port"], 60)
-
-while (True) :
+while True:
     for key in watched:
-        print("Searching for {0} with mac {1}".format(watched[key].name, watched[key].mac))
-        
+        print("Searching for {0} with mac {1}".format(watched[key].name,
+                                                      watched[key].mac))
+
         found = False
-        if (watched[key].is_ble != 2):
+        if watched[key].bt_type != "bt":
             print("BLE Scan")
-            if (search_ble(watched[key].mac)):
-                watched[key].is_ble = 1
+            if search_ble(watched[key].mac):
+                watched[key].bt_type = "ble"
                 watched[key].confidence = 100
-                watched[key].lastseen = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                watched[key].lastseen = datetime.datetime.now().strftime(
+                                                        "%Y-%m-%d %H:%M:%S")
                 found = True
 
-        if (watched[key].is_ble != 1):
+        if watched[key].bt_type != "ble":
             print("BT Scan")
-            if (search_bt(watched[key].mac)):
-                watched[key].is_ble = 2
+            if search_bt(watched[key].mac):
+                watched[key].bt_type = "bt"
                 watched[key].confidence = 100
-                watched[key].lastseen = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                watched[key].lastseen = datetime.datetime.now().strftime(
+                                                        "%Y-%m-%d %H:%M:%S")
                 found = True
-        
-        if (found == False):
+
+        if not found:
             print("Not found")
             watched[key].decrease_confidence()
-        
-        post_mqtt(client, watched[key])
-        time.sleep( 5 )
 
+        post_mqtt(mqtt_client, watched[key])
+        time.sleep(5)

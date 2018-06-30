@@ -3,6 +3,10 @@ mqtt_port: 1883
 mqtt_user: usermqtt
 mqtt_pwd: 123
 
+ble_timeout: 10
+bt_timeout: 6
+scan_interval: 30
+
 room: kitchen
 macs:
   - name: nuttag

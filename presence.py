@@ -16,7 +16,7 @@ class Watchedmac:
     """Watched bl/ble macs."""
 
     def __init__(self, name, mac, lastseen, confidence, bt_type):
-        """Constructeur de notre classe."""
+        """Initialize class variables."""
         self.name = name
         self.mac = mac
         self.lastseen = lastseen
@@ -24,7 +24,7 @@ class Watchedmac:
         self.bt_type = bt_type
 
     def decrease_confidence(self):
-        """."""
+        """Decrese confidence."""
         if self.confidence != 0:
             self.confidence = self.confidence - 5
 
@@ -34,18 +34,6 @@ class Tracker:
 
     def __init__(self):
         """Initialize BLE tracker."""
-
-# https://gist.github.com/ghostbitmeta/694934062c0814680d52
-
-# The callback for when the client receives a CONNACK response from the server.
-
-
-# def on_connect(client, userdata, flag, rc):
-#     """."""
-#     print("Connected with result code %s" % (str(rc)))
-#     # Subscribing in on_connect() means that if we lose the connection and
-#     # reconnect then subscriptions will be renewed.
-#     client.subscribe("presence/#")
 
 
 def on_connect(mqttc, userdata, flag, rc):
@@ -72,47 +60,34 @@ def on_disconnect(mqttc, userdata, rc):
 def scan_ble():
     """Execute bluetooth low energy scan."""
     beacons_raw = ''
+    t_out = 10
     try:
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
-        # time.sleep(1)
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
-        # time.sleep(1)
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'reset'])
         beacons_raw = subprocess.check_output(
-            ['sudo', 'timeout', '--signal', '9', '7',
-             'hcitool', 'lescan', '--duplicate'])
-
+            ['sudo', 'timeout', '--signal', '9', str(t_out),
+             'hcitool', 'lescan', '--duplicate', '--passive'])
     except subprocess.CalledProcessError as e:
         if e.returncode == -9:
             return str(e.output)
         return ("error code", e.returncode, e.output)
-
     return str(beacons_raw)
-    # https://stackoverflow.com/questions/6341451/piping-together-several-subprocesses''
-
-    # sudo timeout --signal SIGINT $beacon_scan_interval hcitool lescan --duplicates 2>&1
-
-    # local result=$(timeout --signal SIGINT $name_scan_timeout hcitool -i hci0 name "$1" 2>&1 | grep -v 'not available' | grep -vE "hcitool|timeout|invalid|error" )
 
 
-def search_ble(mac):
+def search_ble(raw, mac):
     """Search for bluetooth low energy mac address."""
-    raw = scan_ble()
     p = re.compile(r"(?:[0-9a-fA-F]:?){12}")
     macs = OrderedDict((x, True) for x in re.findall(p, raw)).keys()
-    print(mac in macs, macs)
     return mac in macs
 
 
 def scan_bt(mac):
     """Execute bluetooth scan."""
     beacons_raw = ''
+    t_out = 10
     try:
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'down'])
-        # time.sleep(1)
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'up'])
-        # time.sleep(1)
+        subprocess.call(['sudo', 'hciconfig', 'hci0', 'reset'])
         beacons_raw = subprocess.check_output(
-            ['sudo', 'timeout', '--signal', '9', '7',
+            ['sudo', 'timeout', '--signal', '9', str(t_out),
              'hcitool', '-i', 'hci0', 'name', mac])
     except subprocess.CalledProcessError as e:
         if e.returncode == -9:
@@ -123,9 +98,7 @@ def scan_bt(mac):
 
 def search_bt(mac):
     """Search for bluetooth mac address."""
-    print("search_bt({0})".format(mac))
     beacons_raw = scan_bt(mac)
-    print("result scan_bt {0}".format(beacons_raw))
     if (("error" in beacons_raw)
             or ("not available" in beacons_raw)
             or ("timeout" in beacons_raw)
@@ -135,7 +108,6 @@ def search_bt(mac):
     elif ((beacons_raw.strip() == b'')
           or not (beacons_raw and beacons_raw.strip())):
         return False
-    print("bt found {0}".format(beacons_raw))
     return True
 
 
@@ -143,26 +115,23 @@ def json_default(value):
     """Return json timestamp format."""
     if isinstance(value, datetime.date):
         return str(value.strftime("%Y-%m-%d %H:%M:%S"))
-        # return dict(year=value.year, month=value.month, day=value.day)
     return value.__dict__
 
 
 def post_mqtt(client, current):
     """Post mqtt message."""
-    print("post_mqtt")
     global room
-    client.publish("location/owner/{0}/{1}".format(room, current.mac),
+    client.publish("location/owner/%s/%s" % (room, current.mac),
                    json.dumps(current, ensure_ascii=False,
                               default=json_default).encode('utf-8'))
-    # str(json.dumps(current, default=lambda o: o.__dict__)), encoding='ascii')
 
 
 def init_watch():
     """Populate watched mac address list."""
     global watched
     global conf
-    watched = {}  # reset dictionnary
-    # watched['EF:7C:D4:AE:ED:1F'] =  Watchedmac('EF:7C:D4:AE:ED:1F', 0, 0 ,0)
+    watched = {}
+
     print(conf)
     for mac in conf["macs"]:
         print(mac)
@@ -177,9 +146,13 @@ room = conf["room"]
 if room is None:
     room = "default"
 
+ble = False
+
 init_watch()
 for a in watched:
     print(watched[a].mac)
+    if watched[a].bt_type == "ble":
+        ble = True
 
 
 mqtt_client = mqtt.Client()
@@ -191,32 +164,57 @@ mqtt_client.connect(conf["mqtt_host"], conf["mqtt_port"], 60)
 mqtt_client.loop_start()
 
 while True:
+    t_bt, t_ble, t_bles = 0, 0, 0
+    if ble:
+        print("Executing BLE scan...")
+        t_ble_start = time.time()
+        ble_raw = scan_ble()
+        t_ble_end = time.time()
+        t_ble += t_ble_end - t_ble_start
+        # print('raw', ble_raw)
+
     for key in watched:
-        print("Searching for {0} with mac {1}".format(watched[key].name,
-                                                      watched[key].mac))
+        print("Searching for %s [%s]" % (watched[key].name, watched[key].mac))
 
         found = False
+        t_bles_start = time.time()
         if watched[key].bt_type != "bt":
-            print("BLE Scan")
-            if search_ble(watched[key].mac):
+            print("BLE Search")
+            if search_ble(ble_raw, watched[key].mac):
                 watched[key].bt_type = "ble"
                 watched[key].confidence = 100
                 watched[key].lastseen = datetime.datetime.now().strftime(
                                                         "%Y-%m-%d %H:%M:%S")
                 found = True
+        t_bles_end = time.time()
+        t_bles += t_bles_end - t_bles_start
 
+        t_bt_start = time.time()
         if watched[key].bt_type != "ble":
-            print("BT Scan")
+            print("BT Search")
             if search_bt(watched[key].mac):
                 watched[key].bt_type = "bt"
                 watched[key].confidence = 100
                 watched[key].lastseen = datetime.datetime.now().strftime(
                                                         "%Y-%m-%d %H:%M:%S")
                 found = True
+        t_bt_end = time.time()
+        t_bt += t_bt_end - t_bt_start
 
         if not found:
             print("Not found")
             watched[key].decrease_confidence()
+        else:
+            print("SUCCESS")
 
         post_mqtt(mqtt_client, watched[key])
-        time.sleep(5)
+
+    print("Total time: %s (BLE: %s, BT: %s)" % (
+        round((t_bt + t_ble + t_bles), 4),
+        round((t_ble + t_bles), 4),
+        round(t_bt, 4)))
+    # print("BLE Scan: %s" % (round(t_ble, 4)))
+    # print("BLE Search: %s" % (round(t_bles, 4)))
+    # print("BT Scan: %s" % (round(t_bt, 4)))
+
+    time.sleep(5)

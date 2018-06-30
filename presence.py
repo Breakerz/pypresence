@@ -3,13 +3,12 @@
 import subprocess
 import time
 import re
-import datetime
+from datetime import datetime, date
 import json
+import argparse
 from collections import OrderedDict
 import paho.mqtt.client as mqtt
 import yaml
-
-watched = {}
 
 
 class Watchedmac:
@@ -27,13 +26,6 @@ class Watchedmac:
         """Decrese confidence."""
         if self.confidence != 0:
             self.confidence = self.confidence - 5
-
-
-class Tracker:
-    """Bluetooth tracker."""
-
-    def __init__(self):
-        """Initialize BLE tracker."""
 
 
 def on_connect(mqttc, userdata, flag, rc):
@@ -113,105 +105,139 @@ def search_bt(mac):
 
 def json_default(value):
     """Return json timestamp format."""
-    if isinstance(value, datetime.date):
+    if isinstance(value, date):
         return str(value.strftime("%Y-%m-%d %H:%M:%S"))
     return value.__dict__
 
 
-def post_mqtt(client, current):
+def post_mqtt(client, current, room):
     """Post mqtt message."""
-    global room
     client.publish("location/owner/%s/%s" % (room, current.mac),
                    json.dumps(current, ensure_ascii=False,
                               default=json_default).encode('utf-8'))
 
 
-def init_watch():
-    """Populate watched mac address list."""
-    global watched
-    global conf
-    watched = {}
+class Tracker:
+    """Bluetooth tracker."""
 
-    print(conf)
-    for mac in conf["macs"]:
-        print(mac)
-        watched[mac["name"]] = Watchedmac(name=mac["name"], mac=mac["mac"],
-                                          bt_type=mac["bt_type"], confidence=0,
-                                          lastseen="")  # datetime.date.min)
+    def __init__(self, args, conf):
+        """Initialize BLE tracker."""
+        self.args = args
+        self.conf = conf
+        self.ble = False
+        self.watched = {}
+        self.mqtt_client = None
+
+        self.room = self.conf["room"]
+        if self.room is None:
+            self.room = "default"
+
+    def init_watch(self):
+        """Populate watched mac address list."""
+        print(self.conf)
+        for mac in self.conf["macs"]:
+            print(mac)
+            self.watched[mac["name"]] = Watchedmac(name=mac["name"],
+                                                   mac=mac["mac"],
+                                                   bt_type=mac["bt_type"],
+                                                   confidence=0, lastseen="")
+            if self.watched[mac["name"]].bt_type == "ble":
+                self.ble = True
+
+    def init_mqtt(self):
+        """Initialize mqtt client."""
+        self.mqtt_client = mqtt.Client()
+        self.mqtt_client.on_connect = on_connect
+        self.mqtt_client.on_publish = on_publish
+        self.mqtt_client.on_disconnect = on_disconnect
+        self.mqtt_client.username_pw_set(self.conf["mqtt_user"],
+                                         self.conf["mqtt_pwd"])
+        self.mqtt_client.connect(self.conf["mqtt_host"],
+                                 self.conf["mqtt_port"], 60)
+        self.mqtt_client.loop_start()
+
+    def run(self):
+        """Run."""
+        self.init_watch()
+        self.init_mqtt()
+
+        while True:
+            t_bt, t_ble, t_bles = 0, 0, 0
+            if self.ble:
+                print("Executing BLE scan...")
+                t_ble_start = time.time()
+                ble_raw = scan_ble()
+                t_ble_end = time.time()
+                t_ble += t_ble_end - t_ble_start
+                # print('raw', ble_raw)
+
+            for key in self.watched:
+                print("Searching for %s [%s]" % (self.watched[key].name,
+                                                 self.watched[key].mac))
+
+                found = False
+                t_bles_start = time.time()
+                if self.watched[key].bt_type != "bt":
+                    print("BLE Search")
+                    if search_ble(ble_raw, self.watched[key].mac):
+                        self.watched[key].bt_type = "ble"
+                        self.watched[key].confidence = 100
+                        self.watched[key].lastseen = datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S")
+                        found = True
+                t_bles_end = time.time()
+                t_bles += t_bles_end - t_bles_start
+
+                t_bt_start = time.time()
+                if self.watched[key].bt_type != "ble":
+                    print("BT Search")
+                    if search_bt(self.watched[key].mac):
+                        self.watched[key].bt_type = "bt"
+                        self.watched[key].confidence = 100
+                        self.watched[key].lastseen = datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S")
+                        found = True
+                t_bt_end = time.time()
+                t_bt += t_bt_end - t_bt_start
+
+                if not found:
+                    print("Not found")
+                    self.watched[key].decrease_confidence()
+                else:
+                    print("SUCCESS")
+
+                post_mqtt(self.mqtt_client, self.watched[key], self.room)
+
+            print("Total time: %s (BLE: %s, BT: %s)" % (
+                round((t_bt + t_ble + t_bles), 4),
+                round((t_ble + t_bles), 4),
+                round(t_bt, 4)))
+
+            time.sleep(20)
 
 
-conf = yaml.load(open('/home/pi/pypresence/presence.yaml'))
+def main():
+    """."""
+    args = parseArgs()
+    print(args)
 
-room = conf["room"]
-if room is None:
-    room = "default"
+    if args.config:
+        conf = yaml.load(open(args.config))
+    else:
+        conf = yaml.load(open('./presence.yaml'))
 
-ble = False
-
-init_watch()
-for a in watched:
-    print(watched[a].mac)
-    if watched[a].bt_type == "ble":
-        ble = True
+    tracker = Tracker(args, conf)
+    tracker.run()
 
 
-mqtt_client = mqtt.Client()
-mqtt_client.on_connect = on_connect
-mqtt_client.on_publish = on_publish
-mqtt_client.on_disconnect = on_disconnect
-mqtt_client.username_pw_set(conf["mqtt_user"], conf["mqtt_pwd"])
-mqtt_client.connect(conf["mqtt_host"], conf["mqtt_port"], 60)
-mqtt_client.loop_start()
+def parseArgs():
+    """."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', help='Config path')
+    args = parser.parse_args()
+    return args
 
-while True:
-    t_bt, t_ble, t_bles = 0, 0, 0
-    if ble:
-        print("Executing BLE scan...")
-        t_ble_start = time.time()
-        ble_raw = scan_ble()
-        t_ble_end = time.time()
-        t_ble += t_ble_end - t_ble_start
-        # print('raw', ble_raw)
 
-    for key in watched:
-        print("Searching for %s [%s]" % (watched[key].name, watched[key].mac))
-
-        found = False
-        t_bles_start = time.time()
-        if watched[key].bt_type != "bt":
-            print("BLE Search")
-            if search_ble(ble_raw, watched[key].mac):
-                watched[key].bt_type = "ble"
-                watched[key].confidence = 100
-                watched[key].lastseen = datetime.datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S")
-                found = True
-        t_bles_end = time.time()
-        t_bles += t_bles_end - t_bles_start
-
-        t_bt_start = time.time()
-        if watched[key].bt_type != "ble":
-            print("BT Search")
-            if search_bt(watched[key].mac):
-                watched[key].bt_type = "bt"
-                watched[key].confidence = 100
-                watched[key].lastseen = datetime.datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S")
-                found = True
-        t_bt_end = time.time()
-        t_bt += t_bt_end - t_bt_start
-
-        if not found:
-            print("Not found")
-            watched[key].decrease_confidence()
-        else:
-            print("SUCCESS")
-
-        post_mqtt(mqtt_client, watched[key])
-
-    print("Total time: %s (BLE: %s, BT: %s)" % (
-        round((t_bt + t_ble + t_bles), 4),
-        round((t_ble + t_bles), 4),
-        round(t_bt, 4)))
-
-    time.sleep(20)
+if __name__ == "__main__":
+    # execute only if run as a script
+    main()

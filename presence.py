@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#!/home/pi/pypresence/venv/bin/python
 """Presence detection made in python."""
 import subprocess
 import time
@@ -140,7 +140,7 @@ def init_watch():
                                           lastseen="")  # datetime.date.min)
 
 
-conf = yaml.load(open('./presence.yaml'))
+conf = yaml.load(open('/home/pi/pypresence/presence.yaml'))
 
 room = conf["room"]
 if room is None:
@@ -184,7 +184,7 @@ while True:
                 watched[key].bt_type = "ble"
                 watched[key].confidence = 100
                 watched[key].lastseen = datetime.datetime.now().strftime(
-                                                        "%Y-%m-%d %H:%M:%S")
+                    "%Y-%m-%d %H:%M:%S")
                 found = True
         t_bles_end = time.time()
         t_bles += t_bles_end - t_bles_start
@@ -196,7 +196,7 @@ while True:
                 watched[key].bt_type = "bt"
                 watched[key].confidence = 100
                 watched[key].lastseen = datetime.datetime.now().strftime(
-                                                        "%Y-%m-%d %H:%M:%S")
+                    "%Y-%m-%d %H:%M:%S")
                 found = True
         t_bt_end = time.time()
         t_bt += t_bt_end - t_bt_start
@@ -213,8 +213,5 @@ while True:
         round((t_bt + t_ble + t_bles), 4),
         round((t_ble + t_bles), 4),
         round(t_bt, 4)))
-    # print("BLE Scan: %s" % (round(t_ble, 4)))
-    # print("BLE Search: %s" % (round(t_bles, 4)))
-    # print("BT Scan: %s" % (round(t_bt, 4)))
 
-    time.sleep(5)
+    time.sleep(20)

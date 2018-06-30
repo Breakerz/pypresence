@@ -11,7 +11,7 @@ import paho.mqtt.client as mqtt
 import yaml
 
 
-class Watchedmac:
+class WatchedMAC:
     """Watched bl/ble macs."""
 
     def __init__(self, name, mac, lastseen, confidence, bt_type):
@@ -49,14 +49,13 @@ def on_disconnect(mqttc, userdata, rc):
         print("Disconnected successfully")
 
 
-def scan_ble():
+def scan_ble(timeout):
     """Execute bluetooth low energy scan."""
     beacons_raw = ''
-    t_out = 10
     try:
         subprocess.call(['sudo', 'hciconfig', 'hci0', 'reset'])
         beacons_raw = subprocess.check_output(
-            ['sudo', 'timeout', '--signal', '9', str(t_out),
+            ['sudo', 'timeout', '--signal', '9', str(timeout),
              'hcitool', 'lescan', '--duplicate', '--passive'])
     except subprocess.CalledProcessError as e:
         if e.returncode == -9:
@@ -128,6 +127,10 @@ class Tracker:
         self.watched = {}
         self.mqtt_client = None
 
+        self.ble_timeout = 10
+        self.bt_timeout = 6
+        self.scan_interval = 20
+
         self.room = self.conf["room"]
         if self.room is None:
             self.room = "default"
@@ -137,7 +140,7 @@ class Tracker:
         print(self.conf)
         for mac in self.conf["macs"]:
             print(mac)
-            self.watched[mac["name"]] = Watchedmac(name=mac["name"],
+            self.watched[mac["name"]] = WatchedMAC(name=mac["name"],
                                                    mac=mac["mac"],
                                                    bt_type=mac["bt_type"],
                                                    confidence=0, lastseen="")
@@ -166,7 +169,7 @@ class Tracker:
             if self.ble:
                 print("Executing BLE scan...")
                 t_ble_start = time.time()
-                ble_raw = scan_ble()
+                ble_raw = scan_ble(self.ble_timeout)
                 t_ble_end = time.time()
                 t_ble += t_ble_end - t_ble_start
                 # print('raw', ble_raw)
@@ -213,13 +216,16 @@ class Tracker:
                 round((t_ble + t_bles), 4),
                 round(t_bt, 4)))
 
-            time.sleep(20)
+            # calculate time left until next scan
+            pause = self.scan_interval-(t_bt + t_ble + t_bles)
+            if pause > 0:
+                print("Pause: ", pause)
+                time.sleep(pause)
 
 
 def main():
     """."""
     args = parseArgs()
-    print(args)
 
     if args.config:
         conf = yaml.load(open(args.config))

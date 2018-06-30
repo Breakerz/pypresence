@@ -139,7 +139,6 @@ class Tracker:
         """Populate watched mac address list."""
         print(self.conf)
         for mac in self.conf["macs"]:
-            print(mac)
             self.watched[mac["name"]] = WatchedMAC(name=mac["name"],
                                                    mac=mac["mac"],
                                                    bt_type=mac["bt_type"],
@@ -159,10 +158,17 @@ class Tracker:
                                  self.conf["mqtt_port"], 60)
         self.mqtt_client.loop_start()
 
+    def init_timeouts(self):
+        """Initialize timeouts."""
+        self.ble_timeout = self.conf["ble_timeout"]
+        self.bt_timeout = self.conf["bt_timeout"]
+        self.scan_interval = self.conf["scan_interval"]
+
     def run(self):
         """Run."""
         self.init_watch()
         self.init_mqtt()
+        self.init_timeouts()
 
         while True:
             t_bt, t_ble, t_bles = 0, 0, 0
@@ -219,7 +225,6 @@ class Tracker:
             # calculate time left until next scan
             pause = self.scan_interval-(t_bt + t_ble + t_bles)
             if pause > 0:
-                print("Pause: ", pause)
                 time.sleep(pause)
 
 

@@ -1,6 +1,7 @@
 #!/home/pi/pypresence/venv/bin/python
 """Presence detection made in python."""
 import subprocess
+import signal
 import time
 import re
 from datetime import datetime, date
@@ -30,7 +31,7 @@ class WatchedMAC:
 
 def on_connect(mqttc, userdata, flag, rc):
     """Implement callback on mqtt connect."""
-    print("Connected with result code "+str(rc))
+    print("Connected with result code [%i]" % (rc))
     if rc != 0:
         mqttc.reconnect()
 
@@ -43,8 +44,10 @@ def on_publish(mqttc, userdata, mid):
 def on_disconnect(mqttc, userdata, rc):
     """Implement callback for mqtt disconnect."""
     if rc != 0:
-        print("Unexpected disconnection. Reconnecting...")
+        print("Unexpected disconnection. Reconnecting... [%i]" % (rc))
+        mqttc.loop_stop()
         mqttc.reconnect()
+        mqttc.loop_start()
     else:
         print("Disconnected successfully")
 
@@ -131,9 +134,14 @@ class Tracker:
         self.bt_timeout = 6
         self.scan_interval = 20
 
+        self.quit = False
+
         self.room = self.conf["room"]
         if self.room is None:
             self.room = "default"
+
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+        signal.signal(signal.SIGINT, self.exit_gracefully)
 
     def init_watch(self):
         """Populate watched mac address list."""
@@ -164,13 +172,16 @@ class Tracker:
         self.bt_timeout = self.conf["bt_timeout"]
         self.scan_interval = self.conf["scan_interval"]
 
+    def exit_gracefully(self, signum, frame):
+        self.quit = True
+
     def run(self):
         """Run."""
         self.init_watch()
         self.init_mqtt()
         self.init_timeouts()
 
-        while True:
+        while (self.quit is False):
             t_bt, t_ble, t_bles = 0, 0, 0
             if self.ble:
                 print("Executing BLE scan...")
@@ -178,18 +189,19 @@ class Tracker:
                 ble_raw = scan_ble(self.ble_timeout)
                 t_ble_end = time.time()
                 t_ble += t_ble_end - t_ble_start
-                # print('raw', ble_raw)
 
             for key in self.watched:
+                if self.quit: break
+
                 print("Searching for %s [%s]" % (self.watched[key].name,
                                                  self.watched[key].mac))
 
                 found = False
                 t_bles_start = time.time()
-                if self.watched[key].bt_type != "bt":
+                if self.watched[key].bt_type == "ble":
                     print("BLE Search")
                     if search_ble(ble_raw, self.watched[key].mac):
-                        self.watched[key].bt_type = "ble"
+                        # self.watched[key].bt_type = "ble"
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")
@@ -198,10 +210,10 @@ class Tracker:
                 t_bles += t_bles_end - t_bles_start
 
                 t_bt_start = time.time()
-                if self.watched[key].bt_type != "ble":
+                if self.watched[key].bt_type == "bt":
                     print("BT Search")
                     if search_bt(self.watched[key].mac):
-                        self.watched[key].bt_type = "bt"
+                        # self.watched[key].bt_type = "bt"
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")
@@ -217,6 +229,8 @@ class Tracker:
 
                 post_mqtt(self.mqtt_client, self.watched[key], self.room)
 
+            if self.quit: break
+            
             print("Total time: %s (BLE: %s, BT: %s)" % (
                 round((t_bt + t_ble + t_bles), 4),
                 round((t_ble + t_bles), 4),

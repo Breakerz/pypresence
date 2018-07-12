@@ -44,12 +44,9 @@ def on_publish(mqttc, userdata, mid):
 
 def on_disconnect(mqttc, userdata, rc):
     """Implement callback for mqtt disconnect."""
+    mqttc.connected_flag = False
     if rc != 0:
         print("Unexpected disconnection. Reconnecting... [%i]" % (rc))
-        # mqttc.loop_stop()
-        mqttc.connected_flag = False
-        # mqttc.reconnect()
-        # mqttc.loop_start()
     else:
         print("Disconnected successfully")
 

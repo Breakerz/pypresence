@@ -34,6 +34,7 @@ def on_connect(mqttc, userdata, flag, rc):
     print("Connected with result code [%i]" % (rc))
     if rc != 0:
         mqttc.reconnect()
+    mqttc.connected_flag = True
 
 
 def on_publish(mqttc, userdata, mid):
@@ -45,9 +46,10 @@ def on_disconnect(mqttc, userdata, rc):
     """Implement callback for mqtt disconnect."""
     if rc != 0:
         print("Unexpected disconnection. Reconnecting... [%i]" % (rc))
-        mqttc.loop_stop()
-        mqttc.reconnect()
-        mqttc.loop_start()
+        # mqttc.loop_stop()
+        mqttc.connected_flag = False
+        # mqttc.reconnect()
+        # mqttc.loop_start()
     else:
         print("Disconnected successfully")
 
@@ -162,9 +164,13 @@ class Tracker:
         self.mqtt_client.on_disconnect = on_disconnect
         self.mqtt_client.username_pw_set(self.conf["mqtt_user"],
                                          self.conf["mqtt_pwd"])
-        self.mqtt_client.connect(self.conf["mqtt_host"],
-                                 self.conf["mqtt_port"], 60)
-        self.mqtt_client.loop_start()
+        try:
+            self.mqtt_client.connect(self.conf["mqtt_host"],
+                                     self.conf["mqtt_port"], 60)
+            self.mqtt_client.loop_start()
+        except:
+            print("Connection to mqtt broker failed.")
+            self.quit = True
 
     def init_timeouts(self):
         """Initialize timeouts."""
@@ -189,6 +195,16 @@ class Tracker:
                 ble_raw = scan_ble(self.ble_timeout)
                 t_ble_end = time.time()
                 t_ble += t_ble_end - t_ble_start
+
+            if not self.mqtt_client.connected_flag:
+                try:
+                    self.mqtt_client.loop_stop()
+                    self.mqtt_client.reconnect()
+                    self.mqtt_client.loop_start()
+                except:
+                    print("Trying to reconnect to mqtt broker ...")
+                    time.sleep(10)
+                    continue
 
             for key in self.watched:
                 if self.quit: break
@@ -230,7 +246,7 @@ class Tracker:
                 post_mqtt(self.mqtt_client, self.watched[key], self.room)
 
             if self.quit: break
-            
+
             print("Total time: %s (BLE: %s, BT: %s)" % (
                 round((t_bt + t_ble + t_bles), 4),
                 round((t_ble + t_bles), 4),

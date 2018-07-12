@@ -217,7 +217,6 @@ class Tracker:
                 if self.watched[key].bt_type == "ble":
                     print("BLE Search")
                     if search_ble(ble_raw, self.watched[key].mac):
-                        # self.watched[key].bt_type = "ble"
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")
@@ -229,7 +228,6 @@ class Tracker:
                 if self.watched[key].bt_type == "bt":
                     print("BT Search")
                     if search_bt(self.watched[key].mac):
-                        # self.watched[key].bt_type = "bt"
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")

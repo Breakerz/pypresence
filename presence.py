@@ -206,7 +206,7 @@ class Tracker:
                     time.sleep(10)
                     continue
 
-            for key in self.watched:
+            for key in sorted(self.watched, key=lambda x: self.watched[x].bt_type):
                 if self.quit: break
 
                 print("Searching for %s [%s]" % (self.watched[key].name,

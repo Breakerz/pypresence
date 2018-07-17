@@ -39,7 +39,8 @@ def on_connect(mqttc, userdata, flag, rc):
 
 def on_publish(mqttc, userdata, mid):
     """Implement callback for mqtt publish."""
-    print("Published")
+    # print("Published")
+    pass
 
 
 def on_disconnect(mqttc, userdata, rc):
@@ -187,7 +188,7 @@ class Tracker:
         while (self.quit is False):
             t_bt, t_ble, t_bles = 0, 0, 0
             if self.ble:
-                print("Executing BLE scan...")
+                # print("Executing BLE scan...")
                 t_ble_start = time.time()
                 ble_raw = scan_ble(self.ble_timeout)
                 t_ble_end = time.time()
@@ -212,7 +213,7 @@ class Tracker:
                 found = False
                 t_bles_start = time.time()
                 if self.watched[key].bt_type == "ble":
-                    print("BLE Search")
+                    # print("BLE Search")
                     if search_ble(ble_raw, self.watched[key].mac):
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
@@ -223,7 +224,7 @@ class Tracker:
 
                 t_bt_start = time.time()
                 if self.watched[key].bt_type == "bt":
-                    print("BT Search")
+                    # print("BT Search")
                     if search_bt(self.watched[key].mac):
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
@@ -233,10 +234,10 @@ class Tracker:
                 t_bt += t_bt_end - t_bt_start
 
                 if not found:
-                    print("Not found")
+                    # print("Not found")
                     self.watched[key].decrease_confidence()
-                else:
-                    print("SUCCESS")
+                # else:
+                #     print("SUCCESS")
 
                 post_mqtt(self.mqtt_client, self.watched[key], self.room)
 
@@ -250,6 +251,7 @@ class Tracker:
             # calculate time left until next scan
             pause = self.scan_interval-(t_bt + t_ble + t_bles)
             if pause > 0:
+                print("Waiting %i" % (pause))
                 time.sleep(pause)
 
 

@@ -10,6 +10,8 @@ import argparse
 from collections import OrderedDict
 import paho.mqtt.client as mqtt
 import yaml
+from bluepy.btle import Scanner, DefaultDelegate
+import bluetooth
 
 
 class WatchedMAC:
@@ -27,6 +29,21 @@ class WatchedMAC:
         """Decrese confidence."""
         if self.confidence != 0:
             self.confidence = self.confidence - 5
+
+
+class BLEScanDelegate(DefaultDelegate):
+    """BLE scan."""
+
+    def __init__(self):
+        """Initialize."""
+        DefaultDelegate.__init__(self)
+
+    def handleDiscovery(self, dev, isNewDev, isNewData):
+        """Post mqtt message on discovery."""
+        return
+        # if isNewDev:
+        #     # print("Discovered device", dev.addr, dev.rssi)
+        #     pass
 
 
 def on_connect(mqttc, userdata, flag, rc):
@@ -52,57 +69,9 @@ def on_disconnect(mqttc, userdata, rc):
         print("Disconnected successfully")
 
 
-def scan_ble(timeout):
-    """Execute bluetooth low energy scan."""
-    beacons_raw = ''
-    try:
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'reset'])
-        beacons_raw = subprocess.check_output(
-            ['sudo', 'timeout', '--signal', '9', str(timeout),
-             'hcitool', 'lescan', '--duplicate', '--passive'])
-    except subprocess.CalledProcessError as e:
-        if e.returncode == -9:
-            return str(e.output)
-        return ("error code", e.returncode, e.output)
-    return str(beacons_raw)
-
-
 def search_ble(raw, mac):
     """Search for bluetooth low energy mac address."""
-    p = re.compile(r"(?:[0-9a-fA-F]:?){12}")
-    macs = OrderedDict((x, True) for x in re.findall(p, raw)).keys()
-    return mac in macs
-
-
-def scan_bt(mac):
-    """Execute bluetooth scan."""
-    beacons_raw = ''
-    t_out = 10
-    try:
-        subprocess.call(['sudo', 'hciconfig', 'hci0', 'reset'])
-        beacons_raw = subprocess.check_output(
-            ['sudo', 'timeout', '--signal', '9', str(t_out),
-             'hcitool', '-i', 'hci0', 'name', mac])
-    except subprocess.CalledProcessError as e:
-        if e.returncode == -9:
-            return str(beacons_raw, 'utf-8')
-        return 'error'
-    return str(beacons_raw, 'utf-8')
-
-
-def search_bt(mac):
-    """Search for bluetooth mac address."""
-    beacons_raw = scan_bt(mac)
-    if (("error" in beacons_raw)
-            or ("not available" in beacons_raw)
-            or ("timeout" in beacons_raw)
-            or ("invalid" in beacons_raw)
-            or ("hcitool" in beacons_raw)):
-        return False
-    elif ((beacons_raw.strip() == b'')
-          or not (beacons_raw and beacons_raw.strip())):
-        return False
-    return True
+    return mac in [o.addr for o in raw]
 
 
 def json_default(value):
@@ -110,13 +79,6 @@ def json_default(value):
     if isinstance(value, date):
         return str(value.strftime("%Y-%m-%d %H:%M:%S"))
     return value.__dict__
-
-
-def post_mqtt(client, current, room):
-    """Post mqtt message."""
-    client.publish("location/owner/%s/%s" % (room, current.mac),
-                   json.dumps(current, ensure_ascii=False,
-                              default=json_default).encode('utf-8'))
 
 
 class Tracker:
@@ -129,6 +91,7 @@ class Tracker:
         self.ble = False
         self.watched = {}
         self.mqtt_client = None
+        self.scanner = Scanner().withDelegate(BLEScanDelegate())
 
         self.ble_timeout = 10
         self.bt_timeout = 6
@@ -138,7 +101,7 @@ class Tracker:
 
         self.room = self.conf["room"]
         if self.room is None:
-            self.room = "default"
+            self.room = "room"
 
         signal.signal(signal.SIGTERM, self.exit_gracefully)
         signal.signal(signal.SIGINT, self.exit_gracefully)
@@ -177,7 +140,23 @@ class Tracker:
         self.scan_interval = self.conf["scan_interval"]
 
     def exit_gracefully(self, signum, frame):
+        """Exit the presence scanner gracefully."""
         self.quit = True
+
+    def search_bt(self, mac):
+        """Search for bluetooth mac address."""
+        name = bluetooth.lookup_name(mac, self.bt_timeout)
+        if name:
+            return True
+        return False
+
+    def post_mqtt(self, current):
+        """Post mqtt message."""
+        self.mqtt_client.publish("location/owner/%s/%s" % (self.room,
+                                                           current.mac),
+                                 json.dumps(current, ensure_ascii=False,
+                                            default=json_default).encode(
+                                                'utf-8'))
 
     def run(self):
         """Run."""
@@ -185,14 +164,10 @@ class Tracker:
         self.init_mqtt()
         self.init_timeouts()
 
-        while (self.quit is False):
-            t_bt, t_ble, t_bles = 0, 0, 0
+        while self.quit is False:
+            t_start = time.time()
             if self.ble:
-                # print("Executing BLE scan...")
-                t_ble_start = time.time()
-                ble_raw = scan_ble(self.ble_timeout)
-                t_ble_end = time.time()
-                t_ble += t_ble_end - t_ble_start
+                ble_raw = self.scanner.scan(self.ble_timeout)
 
             if not self.mqtt_client.connected_flag:
                 try:
@@ -204,52 +179,40 @@ class Tracker:
                     time.sleep(10)
                     continue
 
-            for key in sorted(self.watched, key=lambda x: self.watched[x].bt_type):
-                if self.quit: break
+            for key in sorted(self.watched,
+                              key=lambda x: self.watched[x].bt_type):
+                if self.quit:
+                    break
 
                 print("Searching for %s [%s]" % (self.watched[key].name,
                                                  self.watched[key].mac))
 
                 found = False
-                t_bles_start = time.time()
                 if self.watched[key].bt_type == "ble":
-                    # print("BLE Search")
                     if search_ble(ble_raw, self.watched[key].mac):
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")
                         found = True
-                t_bles_end = time.time()
-                t_bles += t_bles_end - t_bles_start
 
-                t_bt_start = time.time()
                 if self.watched[key].bt_type == "bt":
-                    # print("BT Search")
-                    if search_bt(self.watched[key].mac):
+                    if self.search_bt(self.watched[key].mac):
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")
                         found = True
-                t_bt_end = time.time()
-                t_bt += t_bt_end - t_bt_start
 
                 if not found:
-                    # print("Not found")
                     self.watched[key].decrease_confidence()
-                # else:
-                #     print("SUCCESS")
 
-                post_mqtt(self.mqtt_client, self.watched[key], self.room)
+                self.post_mqtt(self.watched[key])
 
-            if self.quit: break
-
-            print("Total time: %s (BLE: %s, BT: %s)" % (
-                round((t_bt + t_ble + t_bles), 4),
-                round((t_ble + t_bles), 4),
-                round(t_bt, 4)))
+            if self.quit:
+                break
 
             # calculate time left until next scan
-            pause = self.scan_interval-(t_bt + t_ble + t_bles)
+            t_end = time.time()
+            pause = self.scan_interval-(t_end - t_start)
             if pause > 0:
                 print("Waiting %i" % (pause))
                 time.sleep(pause)

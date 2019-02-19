@@ -7,7 +7,6 @@ import re
 from datetime import datetime, date
 import json
 import argparse
-from collections import OrderedDict
 import paho.mqtt.client as mqtt
 import yaml
 from bluepy.btle import Scanner, DefaultDelegate
@@ -20,7 +19,7 @@ class WatchedMAC:
     def __init__(self, name, mac, lastseen, confidence, bt_type):
         """Initialize class variables."""
         self.name = name
-        self.mac = mac
+        self.mac = mac.upper()
         self.lastseen = lastseen
         self.confidence = confidence
         self.bt_type = bt_type
@@ -71,7 +70,7 @@ def on_disconnect(mqttc, userdata, rc):
 
 def search_ble(raw, mac):
     """Search for bluetooth low energy mac address."""
-    return mac in [o.addr for o in raw]
+    return mac.lower() in [o.addr for o in raw]
 
 
 def json_default(value):
@@ -150,6 +149,12 @@ class Tracker:
             return True
         return False
 
+    def home_away(self, current):
+        """Evaluate presence state."""
+        if current.confidence > 0:
+            return "home"
+        return "not_home"
+
     def post_mqtt(self, current):
         """Post mqtt message."""
         self.mqtt_client.publish("location/owner/%s/%s" % (self.room,
@@ -157,6 +162,9 @@ class Tracker:
                                  json.dumps(current, ensure_ascii=False,
                                             default=json_default).encode(
                                                 'utf-8'))
+
+        self.mqtt_client.publish("location/%s" % (current.name),
+                                 self.home_away(current).encode('utf-8'))
 
     def run(self):
         """Run."""
@@ -204,8 +212,11 @@ class Tracker:
 
                 if not found:
                     self.watched[key].decrease_confidence()
+                else:
+                    print("%s found" % (self.watched[key].name))
 
                 self.post_mqtt(self.watched[key])
+
 
             if self.quit:
                 break
@@ -214,7 +225,7 @@ class Tracker:
             t_end = time.time()
             pause = self.scan_interval-(t_end - t_start)
             if pause > 0:
-                print("Waiting %i" % (pause))
+                print("Waiting %i seconds ..." % (pause))
                 time.sleep(pause)
 
 

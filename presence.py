@@ -8,7 +8,7 @@ from datetime import datetime, date
 import json
 import argparse
 import paho.mqtt.client as mqtt
-import yaml
+from ruamel.yaml import YAML
 from bluepy.btle import Scanner, DefaultDelegate
 import bluetooth
 
@@ -230,8 +230,10 @@ class Tracker:
 
 
 def main():
-    """."""
+    """Main function."""
     args = parseArgs()
+
+    yaml=YAML(typ='safe')
 
     if args.config:
         conf = yaml.load(open(args.config))
@@ -243,7 +245,7 @@ def main():
 
 
 def parseArgs():
-    """."""
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', help='Config path')
     args = parser.parse_args()
@@ -252,4 +254,9 @@ def parseArgs():
 
 if __name__ == "__main__":
     # execute only if run as a script
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('keyboard interrupt')
+    finally:
+        print('exiting')

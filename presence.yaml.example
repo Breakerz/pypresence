@@ -16,3 +16,7 @@ macs:
   - name : iphone
     mac: '40:9F:AF:79:9F:D2'
     bt_type : bt
+
+  - name : Withings Watch
+    uuid: '00000012345671234556000000000000'
+    bt_type : ble

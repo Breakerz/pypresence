@@ -16,13 +16,14 @@ import bluetooth
 class WatchedMAC:
     """Watched bl/ble macs."""
 
-    def __init__(self, name, mac, lastseen, confidence, bt_type):
+    def __init__(self, name, bt_type, mac='', uuid=''):
         """Initialize class variables."""
         self.name = name
         self.mac = mac.upper()
-        self.lastseen = lastseen
-        self.confidence = confidence
+        self.uuid = uuid
         self.bt_type = bt_type
+        self.lastseen = ''
+        self.confidence = 0
 
     def decrease_confidence(self):
         """Decrese confidence."""
@@ -55,7 +56,6 @@ def on_connect(mqttc, userdata, flag, rc):
 
 def on_publish(mqttc, userdata, mid):
     """Implement callback for mqtt publish."""
-    # print("Published")
     pass
 
 
@@ -68,9 +68,29 @@ def on_disconnect(mqttc, userdata, rc):
         print("Disconnected successfully")
 
 
-def search_ble(raw, mac):
+def normalize_uuid(uuid):
+    """Normalize UUID to only contain alphanumeric lower case characters."""
+    return ''.join([i for i in uuid if i.isalnum()]).lower()
+
+
+def search_mac(raw, mac):
     """Search for bluetooth low energy mac address."""
-    return mac.lower() in [o.addr for o in raw]
+    if mac:
+        return mac.lower() in [o.addr for o in raw]
+
+
+def reverse_uuid(uuid):
+    return ''.join([uuid[x:x+2] for x in range(0,len(uuid),2)][::-1])
+
+
+def search_uuid(raw, uuid):
+    """Search for bluetooth low energy uuid."""
+    if uuid:
+        for o in raw:
+            sdid = 7
+            if sdid in o.scanData.keys():
+                if uuid == reverse_uuid(o.getValueText(sdid)):
+                    return True
 
 
 def json_default(value):
@@ -98,9 +118,9 @@ class Tracker:
 
         self.quit = False
 
-        self.room = self.conf["room"]
+        self.room = self.conf['room']
         if self.room is None:
-            self.room = "room"
+            self.room = 'room'
 
         signal.signal(signal.SIGTERM, self.exit_gracefully)
         signal.signal(signal.SIGINT, self.exit_gracefully)
@@ -108,12 +128,14 @@ class Tracker:
     def init_watch(self):
         """Populate watched mac address list."""
         print(self.conf)
-        for mac in self.conf["macs"]:
-            self.watched[mac["name"]] = WatchedMAC(name=mac["name"],
-                                                   mac=mac["mac"],
-                                                   bt_type=mac["bt_type"],
-                                                   confidence=0, lastseen="")
-            if self.watched[mac["name"]].bt_type == "ble":
+        for mac in self.conf['macs']:
+            self.watched[mac['name']] = WatchedMAC(name=mac['name'],
+                                                   bt_type=mac['bt_type'])
+            if 'mac' in mac.keys():
+                self.watched[mac['name']].mac = mac['mac']
+            if 'uuid' in mac.keys():
+                self.watched[mac['name']].uuid = mac['uuid']
+            if self.watched[mac['name']].bt_type == 'ble':
                 self.ble = True
 
     def init_mqtt(self):
@@ -122,11 +144,11 @@ class Tracker:
         self.mqtt_client.on_connect = on_connect
         self.mqtt_client.on_publish = on_publish
         self.mqtt_client.on_disconnect = on_disconnect
-        self.mqtt_client.username_pw_set(self.conf["mqtt_user"],
-                                         self.conf["mqtt_pwd"])
+        self.mqtt_client.username_pw_set(self.conf['mqtt_user'],
+                                         self.conf['mqtt_pwd'])
         try:
-            self.mqtt_client.connect(self.conf["mqtt_host"],
-                                     self.conf["mqtt_port"], 60)
+            self.mqtt_client.connect(self.conf['mqtt_host'],
+                                     self.conf['mqtt_port'], 60)
             self.mqtt_client.loop_start()
         except:
             print("Connection to mqtt broker failed.")
@@ -134,9 +156,9 @@ class Tracker:
 
     def init_timeouts(self):
         """Initialize timeouts."""
-        self.ble_timeout = self.conf["ble_timeout"]
-        self.bt_timeout = self.conf["bt_timeout"]
-        self.scan_interval = self.conf["scan_interval"]
+        self.ble_timeout = self.conf['ble_timeout']
+        self.bt_timeout = self.conf['bt_timeout']
+        self.scan_interval = self.conf['scan_interval']
 
     def exit_gracefully(self, signum, frame):
         """Exit the presence scanner gracefully."""
@@ -192,12 +214,14 @@ class Tracker:
                 if self.quit:
                     break
 
-                print("Searching for %s [%s]" % (self.watched[key].name,
-                                                 self.watched[key].mac))
+                print("Searching for %s [%s] [%s]" % (self.watched[key].name,
+                                                      self.watched[key].mac,
+                                                      self.watched[key].uuid))
 
                 found = False
                 if self.watched[key].bt_type == "ble":
-                    if search_ble(ble_raw, self.watched[key].mac):
+                    if (search_mac(ble_raw, self.watched[key].mac) or
+                            search_uuid(ble_raw, self.watched[key].uuid)):
                         self.watched[key].confidence = 100
                         self.watched[key].lastseen = datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S")

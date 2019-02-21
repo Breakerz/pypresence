@@ -180,7 +180,7 @@ class Tracker:
     def post_mqtt(self, current):
         """Post mqtt message."""
         self.mqtt_client.publish("location/owner/%s/%s" % (self.room,
-                                                           current.mac),
+                                                           current.mac.upper()),
                                  json.dumps(current, ensure_ascii=False,
                                             default=json_default).encode(
                                                 'utf-8'))

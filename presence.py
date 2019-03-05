@@ -1,4 +1,3 @@
-#!/home/pi/pypresence/venv/bin/python
 """Presence detection made in python."""
 import subprocess
 import signal
@@ -11,6 +10,9 @@ import paho.mqtt.client as mqtt
 from ruamel.yaml import YAML
 from bluepy.btle import Scanner, DefaultDelegate
 import bluetooth
+
+
+__version__ = '0.1'
 
 
 class WatchedMAC:

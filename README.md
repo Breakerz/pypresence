@@ -34,6 +34,20 @@ mqtt_user: usermqtt
 mqtt_pwd: 123
 ```
 
+### Bluetooth (LE)
+Configure timeouts and scan interval to determine how often to scan for your devices.
+
+```yaml
+ble_timeout: 10
+bt_timeout: 6
+scan_interval: 30
+```
+
+### Devices
+For each device to be tracked add the required information.
+
+Check the examples below.
+
 #### iPhone/iOS device
 ```yaml
 - name : iphone

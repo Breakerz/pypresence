@@ -61,8 +61,8 @@ Copy `pypresence@pi.service` to `/etc/systemd/system/pypresence@pi.service`.
 Enable the service and check its state.
 ```bash
 sudo systemctl daemon-reload
-  265  sudo systemctl enable pypresence@pi.service --now
-  266  sudo systemctl status pypresence@pi.service
+sudo systemctl enable pypresence@pi.service --now
+sudo systemctl status pypresence@pi.service
 ```
 
 Check the service logs:

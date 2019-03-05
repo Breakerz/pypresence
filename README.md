@@ -12,10 +12,12 @@ $ sudo apt-get install bluetooth libbluetooth-dev
 git clone git@github.com:cgtobi/pypresence.git
 ```
 
-### Create virtual environment
+### Virtual environment
+Create virtual environment and activate it.
 ```bash
 cd pypresence
 python3 -m venv venv
+. venv/bin/activate
 ```
 
 ### Install requirements

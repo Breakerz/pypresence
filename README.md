@@ -1,19 +1,27 @@
 # pypresence
-Bluetooth Presence detection
+A Bluetooth presence detection written in python.
 
 ## Install requirements
-sudo apt-get install bluetooth libbluetooth-dev
+```bash
+$ sudo apt-get install bluetooth libbluetooth-dev
+```
 
 ## Install pypresence
 ### Clone repo
+```bash
 git clone git@github.com:cgtobi/pypresence.git
+```
 
 ### Create virtual environment
+```bash
 cd pypresence
 python3 -m venv venv
+```
 
 ### Install requirements
+```bash
 pip install -r requirements.txt
+```
 
 ## Configuration
 See presence.yaml.example

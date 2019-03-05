@@ -1,6 +1,8 @@
 # pypresence
 A Bluetooth presence detection written in python.
 
+It runs fine on a Raspberry Pi Zero running Raspbian 9.8.
+
 ## Install requirements
 ```bash
 $ sudo apt-get install bluetooth libbluetooth-dev

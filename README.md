@@ -72,6 +72,10 @@ Check the examples below.
   bt_type : ble
 ```
 
+## Running it from CLI
+```bash
+sudo presence.py -c presence.yaml
+```
 
 ## Running pypresence as a service
 Copy `pypresence@pi.service` to `/etc/systemd/system/pypresence@pi.service`.

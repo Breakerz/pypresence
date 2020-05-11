@@ -1,1 +1,3 @@
 presence.yaml
+venv/
+dist/

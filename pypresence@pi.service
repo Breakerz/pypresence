@@ -1,0 +1,13 @@
+[Unit]
+Description=PyPresence
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/home/pi/pypresence/venv/bin/python /home/pi/pypresence/presence.py -c /home/pi/pypresence/presence.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
